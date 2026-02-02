@@ -64,9 +64,13 @@ const expressApp = createExpressServer({
 // Mount controller routes
 app.use(expressApp);
 
-// 404 handler
-app.use('*', (_req, res) => {
-  return res.status(404).json({
+// ✅ SAFE 404 HANDLER (only runs if no response was already sent)
+app.use((req, res, next) => {
+  if (res.headersSent) {
+    return next();
+  }
+
+  res.status(404).json({
     success: false,
     message: 'Endpoint not found',
     availableEndpoints: [
@@ -79,7 +83,7 @@ app.use('*', (_req, res) => {
   });
 });
 
-// Global fallback error handler (VERY IMPORTANT)
+// Global fallback error handler
 app.use((err: any, req: any, res: any, next: any) => {
   console.error("🔥 Unhandled error:", err);
 
@@ -93,7 +97,7 @@ app.use((err: any, req: any, res: any, next: any) => {
   });
 });
 
-// Start server (Render uses dynamic port)
+// Start server
 const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, () => {
