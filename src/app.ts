@@ -6,10 +6,28 @@ import { Container } from "typedi";
 import { PriceController } from "./controllers/DseController";
 import { GlobalErrorHandler } from "./middlewares/ErrorMiddleware";
 import cors from "cors";
+import compression from "compression";
+import rateLimit from "express-rate-limit";
+import { redis } from "./config/redis";
 
 useContainer(Container);
 
 const app = express();
+
+// ✅ Test Redis connection on startup
+redis.ping()
+  .then(() => console.log("🟢 Redis connected"))
+  .catch((err) => console.error("🔴 Redis connection failed:", err.message));
+
+// ✅ Enable gzip compression (faster API responses)
+app.use(compression());
+
+// ✅ Basic rate limiting (prevents abuse)
+const limiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // limit each IP to 60 requests per minute
+});
+app.use(limiter);
 
 // CORS configuration
 app.use(cors({
@@ -49,8 +67,7 @@ app.get('/api-info', (_req, res) => {
       top30: 'GET /v1/dse/top30',
       historical: 'GET /v1/dse/historical?start=<date>&end=<date>&code=<optional>',
       hello: 'GET /v1/dse/hello'
-    },
-    documentation: 'Visit the root URL for interactive documentation'
+    }
   });
 });
 
@@ -64,7 +81,7 @@ const expressApp = createExpressServer({
 // Mount controller routes
 app.use(expressApp);
 
-// ✅ SAFE 404 HANDLER (only runs if no response was already sent)
+// ✅ SAFE 404 HANDLER
 app.use((req, res, next) => {
   if (res.headersSent) {
     return next();
@@ -72,14 +89,7 @@ app.use((req, res, next) => {
 
   res.status(404).json({
     success: false,
-    message: 'Endpoint not found',
-    availableEndpoints: [
-      'GET /health',
-      'GET /v1/dse/latest',
-      'GET /v1/dse/dsexdata',
-      'GET /v1/dse/top30',
-      'GET /v1/dse/historical'
-    ]
+    message: 'Endpoint not found'
   });
 });
 
@@ -97,13 +107,11 @@ app.use((err: any, req: any, res: any, next: any) => {
   });
 });
 
-// Start server
+// Start server (Render provides PORT)
 const PORT = process.env.PORT || 3000;
 
 const server = app.listen(PORT, () => {
   console.log(`🚀 Bangladesh Stock Market API is running on port ${PORT}`);
-  console.log(`📊 Health endpoint ready`);
-  console.log(`📖 API endpoints ready`);
 });
 
 // Graceful shutdown
@@ -115,3 +123,4 @@ process.on('SIGTERM', () => {
 });
 
 export default app;
+
