@@ -2,38 +2,7 @@ import axios from "../utils/axiosConfig";
 import { CheerioAPI, load as CheerioLoad } from "cheerio";
 import { DHAKA_STOCK_URLS } from "../env";
 import { Service } from "typedi";
-
-interface Quote {
-  // Define the properties of Quote based on your data structure
-  // For example:
-  symbol: string;
-  ltp: string;
-  high: string;
-  low: string;
-  close: string;
-  ycp: string;
-  change: string;
-  trade: string;
-  value: string;
-  volume: string;
-  // Add other properties as needed
-}
-
-interface HistData {
-  // Define the properties for historical data
-  number: string;
-  date: string;
-  tradingCode: string;
-  ltp: string;
-  high: string;
-  low: string;
-  openp: string;
-  closep: string;
-  ycp: string;
-  trade: string;
-  value: string;
-  volume: string;
-}
+import { redis } from "../config/redis"; // ✅ Redis import
 
 @Service()
 export class StockDataService {
@@ -88,24 +57,51 @@ export class StockDataService {
 
     return data;
   }
+
+  // ✅ Latest Stock Data (Cache 5 minutes)
   async getStockData(): Promise<any[]> {
+    const cacheKey = "latest_stock_data";
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log("⚡ Latest stock data from cache");
+      return JSON.parse(cached);
+    }
+
+    console.log("🌐 Fetching fresh latest stock data...");
     const url = DHAKA_STOCK_URLS.LATEST_DATA;
     const $ = await this.fetchAndParseHtml(url);
-    return this.parseTableRows<any>($, "table.table-bordered tr");
+    const data = await this.parseTableRows<any>($, "table.table-bordered tr");
+
+    await redis.set(cacheKey, JSON.stringify(data), "EX", 300);
+    return data;
   }
 
+  // ✅ DSEX Data (Cache 10 minutes)
   async getDsexData(symbol: string | undefined): Promise<any[]> {
+    const cacheKey = `dsex_data_${symbol || "all"}`;
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log("⚡ DSEX data from cache");
+      return JSON.parse(cached);
+    }
+
+    console.log("🌐 Fetching fresh DSEX data...");
     const url = DHAKA_STOCK_URLS.DSEX;
 
     try {
       const $ = await this.fetchAndParseHtml(url);
       let data = await this.parseTableRows<any>($, "table.table-bordered tr");
+
       if (symbol) {
         data = data.filter(
           (d) =>
             d["Symbol"] && d["Symbol"].toUpperCase() === symbol.toUpperCase()
         );
       }
+
+      await redis.set(cacheKey, JSON.stringify(data), "EX", 600);
       return data;
     } catch (error) {
       console.error("Error fetching DSEX data:", error);
@@ -113,24 +109,46 @@ export class StockDataService {
     }
   }
 
+  // ✅ Top 30 (Cache 10 minutes)
   async getTop30(): Promise<any[]> {
+    const cacheKey = "top30_stock_data";
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log("⚡ Top 30 data from cache");
+      return JSON.parse(cached);
+    }
+
+    console.log("🌐 Fetching fresh Top 30 data...");
     const url = DHAKA_STOCK_URLS.TOP_30;
 
     try {
       const $ = await this.fetchAndParseHtml(url);
-      let data = await this.parseTableRows<any>($, "table.table-bordered tr");
+      const data = await this.parseTableRows<any>($, "table.table-bordered tr");
 
+      await redis.set(cacheKey, JSON.stringify(data), "EX", 600);
       return data;
     } catch (error) {
-      console.error("Error fetching DSEX data:", error);
+      console.error("Error fetching Top 30 data:", error);
       return [];
     }
   }
+
+  // ✅ Historical Data (Cache 1 hour)
   async getHistData(
     start: string,
     end: string,
     code = "All Instrument"
   ): Promise<any[]> {
+    const cacheKey = `hist_${start}_${end}_${code}`;
+
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      console.log("⚡ Historical data from cache");
+      return JSON.parse(cached);
+    }
+
+    console.log("🌐 Fetching fresh historical data...");
     const url = DHAKA_STOCK_URLS.HISTORIACAL_DATA;
     const params = {
       startDate: start,
@@ -138,9 +156,16 @@ export class StockDataService {
       inst: code,
       archive: "data",
     };
-    const fullUrl = `${url}?${new URLSearchParams(params).toString()}`;
 
+    const fullUrl = `${url}?${new URLSearchParams(params).toString()}`;
     const $ = await this.fetchAndParseHtml(fullUrl);
-    return this.parseTableRows<any>($, "table.table-bordered tbody tr", false);
+    const data = await this.parseTableRows<any>(
+      $,
+      "table.table-bordered tbody tr",
+      false
+    );
+
+    await redis.set(cacheKey, JSON.stringify(data), "EX", 3600);
+    return data;
   }
 }
