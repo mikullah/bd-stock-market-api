@@ -14,6 +14,9 @@ useContainer(Container);
 
 const app = express();
 
+// ✅ TRUST RENDER PROXY (fixes express-rate-limit warning)
+app.set("trust proxy", 1);
+
 // ✅ Test Redis connection on startup
 redis.ping()
   .then(() => console.log("🟢 Redis connected"))
@@ -25,7 +28,7 @@ app.use(compression());
 // ✅ Basic rate limiting (prevents abuse)
 const limiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
-  max: 60, // limit each IP to 60 requests per minute
+  max: 60 // limit each IP to 60 requests per minute
 });
 app.use(limiter);
 
@@ -83,9 +86,7 @@ app.use(expressApp);
 
 // ✅ SAFE 404 HANDLER
 app.use((req, res, next) => {
-  if (res.headersSent) {
-    return next();
-  }
+  if (res.headersSent) return next();
 
   res.status(404).json({
     success: false,
@@ -97,11 +98,9 @@ app.use((req, res, next) => {
 app.use((err: any, req: any, res: any, next: any) => {
   console.error("🔥 Unhandled error:", err);
 
-  if (res.headersSent) {
-    return next(err);
-  }
+  if (res.headersSent) return next(err);
 
-  return res.status(500).json({
+  res.status(500).json({
     success: false,
     message: "Internal Server Error"
   });
@@ -123,4 +122,3 @@ process.on('SIGTERM', () => {
 });
 
 export default app;
-
