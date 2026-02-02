@@ -11,7 +11,7 @@ useContainer(Container);
 
 const app = express();
 
-// Enhanced CORS configuration for production
+// CORS configuration
 app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -19,13 +19,13 @@ app.use(cors({
   credentials: true
 }));
 
-// Middleware for parsing JSON bodies with size limit
+// Body parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Health check endpoint
+// Health check
 app.get('/health', (_req, res) => {
-  res.status(200).json({
+  return res.status(200).json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -33,12 +33,12 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Serve static files from public directory
+// Static files
 app.use(express.static('public'));
 
-// API documentation endpoint (JSON format for API clients)
+// API info endpoint
 app.get('/api-info', (_req, res) => {
-  res.json({
+  return res.json({
     name: 'Bangladesh Stock Market API',
     version: '1.0.0',
     description: 'Unofficial API for Bangladesh Stock Exchange data',
@@ -54,19 +54,19 @@ app.get('/api-info', (_req, res) => {
   });
 });
 
-// Create Express server with routing-controllers
+// routing-controllers setup
 const expressApp = createExpressServer({
   controllers: [PriceController],
   middlewares: [GlobalErrorHandler],
   defaultErrorHandler: false
 });
 
-// Use the routing-controllers app as middleware in the express app
+// Mount controller routes
 app.use(expressApp);
 
 // 404 handler
 app.use('*', (_req, res) => {
-  res.status(404).json({
+  return res.status(404).json({
     success: false,
     message: 'Endpoint not found',
     availableEndpoints: [
@@ -79,12 +79,27 @@ app.use('*', (_req, res) => {
   });
 });
 
-// Start the Express server
+// Global fallback error handler (VERY IMPORTANT)
+app.use((err: any, req: any, res: any, next: any) => {
+  console.error("🔥 Unhandled error:", err);
+
+  if (res.headersSent) {
+    return next(err);
+  }
+
+  return res.status(500).json({
+    success: false,
+    message: "Internal Server Error"
+  });
+});
+
+// Start server (Render uses dynamic port)
 const PORT = process.env.PORT || 3000;
+
 const server = app.listen(PORT, () => {
   console.log(`🚀 Bangladesh Stock Market API is running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`📖 API docs: http://localhost:${PORT}/`);
+  console.log(`📊 Health endpoint ready`);
+  console.log(`📖 API endpoints ready`);
 });
 
 // Graceful shutdown
